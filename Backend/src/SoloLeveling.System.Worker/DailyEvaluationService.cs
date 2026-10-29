@@ -1,0 +1,420 @@
+using System.Text;
+using WebUtility = global::System.Net.WebUtility;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using SoloLeveling.System.Core.Data;
+using SoloLeveling.System.Core.Domain;
+using SoloLeveling.System.Core.Options;
+using SoloLeveling.System.Core.Services;
+using SoloLeveling.System.Core.Services.Models;
+
+namespace SoloLeveling.System.Worker;
+
+/// <summary>
+/// O Motor do Sistema. Audita as quests do dia, roteia para a IA (recompensa ou punição),
+/// atualiza o banco e dispara o veredito por e-mail.
+/// </summary>
+public class DailyEvaluationService
+{
+    private readonly SystemDbContext _db;
+    private readonly IGeminiEvaluator _evaluator;
+    private readonly IProofStorage _storage;
+    private readonly IEmailSender _email;
+    private readonly WorkerOptions _workerOptions;
+    private readonly SystemRulesOptions _rules;
+    private readonly ILogger<DailyEvaluationService> _logger;
+
+    public DailyEvaluationService(
+        SystemDbContext db,
+        IGeminiEvaluator evaluator,
+        IProofStorage storage,
+        IEmailSender email,
+        IOptions<WorkerOptions> workerOptions,
+        IOptions<SystemRulesOptions> rules,
+        ILogger<DailyEvaluationService> logger)
+    {
+        _db = db;
+        _evaluator = evaluator;
+        _storage = storage;
+        _email = email;
+        _workerOptions = workerOptions.Value;
+        _rules = rules.Value;
+        _logger = logger;
+    }
+
+    public async Task RunAsync(CancellationToken ct = default)
+    {
+        var userId = _workerOptions.PlayerUserId;
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var tomorrow = today.AddDays(1);
+
+        var player = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (player is null)
+        {
+            _logger.LogError("Jogador {UserId} não encontrado. Auditoria abortada.", userId);
+            return;
+        }
+
+        var quests = await _db.Quests
+            .Include(q => q.Proofs)
+            .Where(q => q.UserId == userId && q.TargetDate == today)
+            .ToListAsync(ct);
+
+        if (quests.Count == 0)
+        {
+            _logger.LogInformation("Nenhuma missão para hoje ({Today}). Nada a auditar.", today);
+            return;
+        }
+
+        // Objetivos ativos: a direção e a memória que a IA usa para fatiar as tarefas.
+        var goals = await _db.Goals
+            .Where(g => g.UserId == userId && g.Status == GoalStatus.ACTIVE)
+            .ToListAsync(ct);
+
+        var goalSummaries = goals
+            .Select(g => new GoalSummary(
+                g.Id, g.Title, g.AttributeType, g.Category,
+                g.TargetMetric, g.ContentBacklog, g.ProgressNotes))
+            .ToList();
+
+        // 1. Auditoria: quantas quests do dia estão sem evidência.
+        var missing = quests.Count(q => q.Proofs.Count == 0);
+        _logger.LogInformation("Auditoria: {Total} quests, {Missing} sem evidência.", quests.Count, missing);
+
+        var summaries = quests
+            .Select(q => new QuestSummary(
+                q.Id, q.GoalId, q.Title, q.Description, q.MetricTarget,
+                q.ProofType, q.AttributeType, q.XpReward, q.Proofs.Count > 0))
+            .ToList();
+
+        EvaluationResult result;
+        try
+        {
+            // 2. Roteamento da IA.
+            if (missing == 0)
+            {
+                var proofImages = await LoadProofImagesAsync(quests, ct);
+                result = await _evaluator.EvaluateAsync(player, goalSummaries, summaries, proofImages, ct);
+            }
+            else
+            {
+                result = await _evaluator.PunishAsync(player, goalSummaries, summaries, ct);
+            }
+
+            // 3. Atualização do banco (punição é determinística, não vem da IA).
+            await ApplyResultAsync(player, quests, goals, result, tomorrow, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Falha no julgamento (IA fora, timeout, erro de dados). Não deixa o Sistema
+            // morrer calado: avisa o jogador por e-mail e repropaga para o log/exit code.
+            _logger.LogError(ex, "Falha ao processar a avaliação diária. Enviando alerta de erro.");
+            await SendErrorEmailAsync(player, ex, ct);
+            throw;
+        }
+
+        // 4. Disparo do veredito por e-mail.
+        await SendVerdictEmailAsync(player, result, ct);
+
+        _logger.LogInformation("Auditoria concluída. ΔXP={Delta}, punição={Punish}.", result.TotalXpDelta, result.IsPunishment);
+    }
+
+    private async Task<List<ProofImage>> LoadProofImagesAsync(List<Quest> quests, CancellationToken ct)
+    {
+        var images = new List<ProofImage>();
+        foreach (var quest in quests)
+        {
+            foreach (var proof in quest.Proofs)
+            {
+                try
+                {
+                    var bytes = await _storage.ReadAsync(proof.FilePath, ct);
+                    images.Add(new ProofImage(quest.Id, proof.FilePath, bytes, GuessMimeType(proof.FilePath)));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Falha ao ler evidência {Path}.", proof.FilePath);
+                }
+            }
+        }
+        return images;
+    }
+
+    private async Task ApplyResultAsync(
+        User player,
+        List<Quest> quests,
+        List<Goal> goals,
+        EvaluationResult result,
+        DateOnly tomorrow,
+        CancellationToken ct)
+    {
+        var verdictByQuest = result.Verdicts.ToDictionary(v => v.QuestId);
+
+        var failedCount = 0;
+        foreach (var quest in quests)
+        {
+            if (verdictByQuest.TryGetValue(quest.Id, out var verdict) && verdict.Approved)
+            {
+                quest.Status = QuestStatus.COMPLETED;
+                LevelingService.RewardAttribute(player, quest.AttributeType);
+                foreach (var proof in quest.Proofs)
+                {
+                    proof.AiVerified = true;
+                }
+            }
+            else
+            {
+                quest.Status = QuestStatus.FAILED;
+                failedCount++;
+            }
+        }
+
+        // Aplica a variação de XP consolidada e recalcula o nível.
+        LevelingService.ApplyXp(player, result.TotalXpDelta);
+
+        // Economia de faltas: cada missão reprovada acumula na dívida (determinístico).
+        if (failedCount > 0)
+        {
+            player.FailureCount += failedCount;
+            player.DebtAmount += failedCount * _rules.FeePerFailure;
+        }
+
+        // Memória: grava o progresso de cada objetivo devolvido pela IA.
+        var goalById = goals.ToDictionary(g => g.Id);
+        foreach (var progress in result.GoalProgress)
+        {
+            if (goalById.TryGetValue(progress.GoalId, out var goal))
+            {
+                goal.ProgressNotes = progress.Note;
+            }
+        }
+
+        // Insere as missões normais de amanhã geradas pela IA.
+        // A IA NÃO decide punição: qualquer PENALTY vinda dela é ignorada aqui.
+        foreach (var generated in result.TomorrowQuests.Where(g => g.Kind != QuestKind.PENALTY))
+        {
+            _db.Quests.Add(MapToQuest(player.Id, generated, tomorrow));
+        }
+
+        // Punição determinística: se houve falha, sorteia UMA punição do catálogo.
+        if (failedCount > 0)
+        {
+            await ApplyPunishmentAsync(player, tomorrow, ct);
+        }
+
+        // Evento aleatório: chance diária de uma tarefa bônus extra.
+        TryGenerateBonus(player, goals, tomorrow);
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Sorteia uma punição ativa do catálogo (ponderada por Weight) e materializa
+    /// uma Penalty Quest a partir dela. A punição financeira tem peso menor, então
+    /// não sai sempre. A decisão é do código, não da IA.
+    /// </summary>
+    private async Task ApplyPunishmentAsync(User player, DateOnly tomorrow, CancellationToken ct)
+    {
+        var catalog = await _db.Punishments
+            .Where(p => p.IsActive)
+            .ToListAsync(ct);
+
+        if (catalog.Count == 0)
+        {
+            _logger.LogWarning("Catálogo de punições vazio. Nenhuma Penalty Quest gerada.");
+            return;
+        }
+
+        var chosen = DrawWeighted(catalog);
+
+        // A punição financeira cobra a dívida acumulada; descreve o valor.
+        var description = chosen.Category == PunishmentCategory.FINANCEIRO
+            ? $"{chosen.Description} Valor devido: R$ {player.DebtAmount:0.00}."
+            : chosen.Description;
+
+        _logger.LogInformation("Punição sorteada: {Code} ({Category}).", chosen.Code, chosen.Category);
+
+        _db.Quests.Add(new Quest
+        {
+            UserId = player.Id,
+            GoalId = null,
+            Title = chosen.Title,
+            Description = description,
+            MetricTarget = null,
+            ProofType = chosen.ProofType,
+            EstimatedMinutes = Math.Clamp(chosen.EstimatedMinutes, 1, _rules.MaxTaskMinutes),
+            AttributeType = chosen.AttributeType,
+            XpReward = chosen.XpReward,
+            Status = QuestStatus.PENDING,
+            Kind = QuestKind.PENALTY,
+            IsPenalty = true,
+            TargetDate = tomorrow,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>Sorteio ponderado por Weight.</summary>
+    private static Punishment DrawWeighted(List<Punishment> catalog)
+    {
+        var total = catalog.Sum(p => Math.Max(1, p.Weight));
+        var roll = Random.Shared.Next(total);
+        var acc = 0;
+        foreach (var p in catalog)
+        {
+            acc += Math.Max(1, p.Weight);
+            if (roll < acc)
+            {
+                return p;
+            }
+        }
+        return catalog[^1];
+    }
+
+    private Quest MapToQuest(int userId, GeneratedQuest g, DateOnly date)
+    {
+        return new Quest
+        {
+            UserId = userId,
+            GoalId = g.GoalId,
+            Title = g.Title,
+            Description = g.Description,
+            MetricTarget = g.MetricTarget,
+            ProofType = g.ProofType,
+            EstimatedMinutes = Math.Clamp(g.EstimatedMinutes, 1, _rules.MaxTaskMinutes),
+            AttributeType = g.Attribute,
+            XpReward = g.XpReward,
+            Status = QuestStatus.PENDING,
+            Kind = g.Kind,
+            IsPenalty = g.Kind == QuestKind.PENALTY,
+            TargetDate = date,
+            CreatedAt = DateTime.UtcNow
+        };
+    }
+
+    /// <summary>Rola o dado do evento aleatório e, se acertar, cria uma tarefa bônus.</summary>
+    private void TryGenerateBonus(User player, List<Goal> goals, DateOnly tomorrow)
+    {
+        if (_rules.BonusChancePercent <= 0)
+        {
+            return;
+        }
+
+        var roll = Random.Shared.Next(1, 101); // 1..100
+        if (roll > _rules.BonusChancePercent)
+        {
+            return;
+        }
+
+        // Alinha o bônus a um objetivo ativo quando houver, senão é um desafio de disciplina.
+        var goal = goals.Count > 0 ? goals[Random.Shared.Next(goals.Count)] : null;
+        var attribute = goal?.AttributeType ?? AttributeType.VIT;
+
+        _logger.LogInformation("Evento aleatório acionado (roll={Roll} <= {Chance}%). Tarefa bônus gerada.",
+            roll, _rules.BonusChancePercent);
+
+        _db.Quests.Add(new Quest
+        {
+            UserId = player.Id,
+            GoalId = goal?.Id,
+            Title = "[EVENTO] Desafio Surpresa do Sistema",
+            Description = goal is null
+                ? "Um gatilho aleatório do Sistema. Cumpra um desafio extra de disciplina de até 30 min."
+                : $"Gatilho aleatório ligado ao objetivo '{goal.Title}'. Avance um passo extra hoje.",
+            MetricTarget = "Desafio bônus de até 30 min",
+            ProofType = ProofType.GENERIC,
+            EstimatedMinutes = 30,
+            AttributeType = attribute,
+            XpReward = 25,
+            Status = QuestStatus.PENDING,
+            Kind = QuestKind.BONUS,
+            IsPenalty = false,
+            TargetDate = tomorrow,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+
+    private async Task SendVerdictEmailAsync(User player, EvaluationResult result, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(player.Email))
+        {
+            _logger.LogWarning("Jogador sem e-mail cadastrado. Veredito não enviado.");
+            return;
+        }
+
+        var subject = result.IsPunishment
+            ? "[O SISTEMA] Penalidade Aplicada"
+            : "[O SISTEMA] Veredito Diário";
+
+        string body;
+        try
+        {
+            body = EmailTemplateRenderer.RenderVerdict(player, result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao renderizar o template de e-mail. Usando corpo simples.");
+            body = $"<p>{WebUtility.HtmlEncode(result.VerdictSummary)}</p>";
+        }
+
+        try
+        {
+            await _email.SendAsync(player.Email, subject, body, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao enviar o veredito por e-mail.");
+        }
+    }
+
+    /// <summary>
+    /// Envia um alerta quando a auditoria falha (IA fora do ar, timeout, erro de dados).
+    /// Mantém o Sistema transparente mesmo quando não consegue julgar.
+    /// </summary>
+    private async Task SendErrorEmailAsync(User player, Exception error, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(player.Email))
+        {
+            _logger.LogWarning("Jogador sem e-mail cadastrado. Alerta de erro não enviado.");
+            return;
+        }
+
+        var when = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        var sb = new StringBuilder();
+        sb.Append("<h2>[O SISTEMA] Falha na auditoria</h2>");
+        sb.Append($"<p><strong>Jogador:</strong> {WebUtility.HtmlEncode(player.Username)}</p>");
+        sb.Append($"<p><strong>Quando:</strong> {when}</p>");
+        sb.Append("<p>O Sistema não conseguiu concluir o julgamento das missões de hoje. ");
+        sb.Append("Nenhum XP foi alterado e nenhuma missão de amanhã foi gerada nesta execução.</p>");
+        sb.Append($"<p><strong>Detalhe técnico:</strong> {WebUtility.HtmlEncode(error.Message)}</p>");
+        sb.Append("<p>Verifique o serviço e rode a auditoria novamente.</p>");
+
+        try
+        {
+            await _email.SendAsync(player.Email, "[O SISTEMA] Falha na Auditoria Diária", sb.ToString(), ct);
+            _logger.LogInformation("Alerta de erro enviado para {Email}.", player.Email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao enviar o alerta de erro por e-mail.");
+        }
+    }
+
+    private static string GuessMimeType(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".heic" => "image/heic",
+            ".gif" => "image/gif",
+            _ => "image/jpeg"
+        };
+    }
+}
+

@@ -1,0 +1,82 @@
+# =============================================================================
+# SLAPP - .gitignore (raiz)
+# Protege segredos e ignora artefatos de build de .NET e Node/Vite.
+# =============================================================================
+
+# ----------------------------------------------------------------------------
+# SEGREDOS - nunca commitar
+# ----------------------------------------------------------------------------
+# Arquivos de ambiente (credenciais de banco, chaves de API, SMTP, JWT)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Settings de desenvolvimento/produção com segredos reais.
+# O appsettings.json base (com placeholders) PODE subir; os overrides com
+# credenciais reais, NAO.
+appsettings.Development.json
+appsettings.Production.json
+appsettings.*.Local.json
+
+# User Secrets do .NET (caso use)
+secrets.json
+
+# Scripts e arquivos de teste com credenciais embutidas
+smtp-test.ps1
+
+# Chaves e certificados
+*.pem
+*.key
+*.pfx
+*.p12
+
+# ----------------------------------------------------------------------------
+# .NET
+# ----------------------------------------------------------------------------
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+*.userosscache
+*.dbmdl
+project.lock.json
+artifacts/
+
+# ----------------------------------------------------------------------------
+# Node / Vite (Frontend)
+# ----------------------------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ----------------------------------------------------------------------------
+# IDE / Editores
+# ----------------------------------------------------------------------------
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ----------------------------------------------------------------------------
+# Dados locais da aplicacao
+# ----------------------------------------------------------------------------
+# Evidencias enviadas (imagens dos jogadores) gravadas no disco local
+system_proofs/
+
+# ----------------------------------------------------------------------------
+# Sistema operacional
+# ----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini

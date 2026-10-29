@@ -1,0 +1,89 @@
+export interface LoginResponse {
+  accessToken: string;
+  tokenType: string;
+  expiresInSeconds: number;
+}
+
+export interface Attributes {
+  for: number;
+  int: number;
+  sab: number;
+  vit: number;
+}
+
+export interface PlayerStatus {
+  id: number;
+  username: string;
+  level: number;
+  currentXp: number;
+  xpToNextLevel: number;
+  attributes: Attributes;
+  dailyDeadline: string;
+}
+
+export type QuestStatus = "PENDING" | "COMPLETED" | "FAILED";
+export type AttributeType = "STR" | "INT" | "WIS" | "VIT";
+export type QuestKind = "NORMAL" | "PENALTY" | "BONUS";
+export type ProofType =
+  | "STRAVA"
+  | "SUMMARY"
+  | "MINDMAP"
+  | "PHOTO"
+  | "PAYMENT_RECEIPT"
+  | "GENERIC";
+
+export interface Quest {
+  id: number;
+  goalId: number | null;
+  title: string;
+  description: string | null;
+  metricTarget: string | null;
+  proofType: ProofType;
+  estimatedMinutes: number;
+  attributeType: AttributeType;
+  xpReward: number;
+  status: QuestStatus;
+  kind: QuestKind;
+  isPenalty: boolean;
+  targetDate: string;
+  hasProof: boolean;
+}
+
+export type GoalCategory = "RUNNING" | "STUDY" | "READING" | "GENERIC";
+export type GoalStatus = "ACTIVE" | "COMPLETED" | "PAUSED";
+
+export interface Goal {
+  id: number;
+  title: string;
+  description: string | null;
+  attributeType: AttributeType;
+  category: GoalCategory;
+  targetMetric: string | null;
+  contentBacklog: string | null;
+  status: GoalStatus;
+  progressNotes: string | null;
+  startDate: string;
+  targetDate: string | null;
+}
+
+/** Payload de criação/edição (sem id). */
+export type GoalInput = Omit<Goal, "id">;
+
+export type PunishmentCategory = "FISICO" | "ROTINA" | "FINANCEIRO";
+
+export interface Punishment {
+  id: number;
+  code: string;
+  category: PunishmentCategory;
+  title: string;
+  description: string;
+  proofType: ProofType;
+  estimatedMinutes: number;
+  xpReward: number;
+  attributeType: AttributeType;
+  weight: number;
+  isActive: boolean;
+}
+
+/** Payload de criação/edição (sem id). */
+export type PunishmentInput = Omit<Punishment, "id">;

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body style="margin:0;padding:0;background:#070b16;font-family:Segoe UI,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#070b16;padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#0d1526;border:1px solid rgba(56,189,248,0.25);border-radius:14px;overflow:hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#0ea5e9,#38bdf8);padding:28px 32px;text-align:center;">
+              <div style="font-size:12px;letter-spacing:6px;color:#041018;font-weight:700;">O SISTEMA</div>
+              <div style="font-size:24px;color:#041018;font-weight:800;margin-top:6px;">VEREDITO DIÁRIO</div>
+              <div style="font-size:13px;color:#063a52;margin-top:4px;">Sua evolução foi reconhecida</div>
+            </td>
+          </tr>
+
+          <!-- Player -->
+          <tr>
+            <td style="padding:24px 32px 8px;">
+              <p style="margin:0 0 6px;color:#94a3b8;font-size:13px;">JOGADOR</p>
+              <p style="margin:0;color:#e2e8f0;font-size:20px;font-weight:700;">{{USERNAME}}</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">
+                <tr>
+                  <td style="background:#0a1120;border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px;text-align:center;">
+                    <span style="color:#94a3b8;font-size:11px;letter-spacing:2px;">NÍVEL</span><br/>
+                    <span style="color:#38bdf8;font-size:22px;font-weight:800;">{{LEVEL}}</span>
+                  </td>
+                  <td style="width:12px;"></td>
+                  <td style="background:#0a1120;border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px;text-align:center;">
+                    <span style="color:#94a3b8;font-size:11px;letter-spacing:2px;">XP</span><br/>
+                    <span style="color:#38bdf8;font-size:22px;font-weight:800;">{{XP}}</span>
+                    <span style="color:#34d399;font-size:13px;font-weight:700;"> ({{XP_DELTA}})</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Verdict summary -->
+          <tr>
+            <td style="padding:16px 32px;">
+              <div style="background:rgba(56,189,248,0.08);border-left:3px solid #38bdf8;border-radius:8px;padding:14px 16px;color:#cbd5e1;font-size:14px;line-height:1.5;">
+                {{VERDICT_SUMMARY}}
+              </div>
+            </td>
+          </tr>
+
+          <!-- Evaluations -->
+          <tr>
+            <td style="padding:8px 32px;">
+              <p style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;">Avaliação das missões</p>
+              {{VERDICT_ROWS}}
+            </td>
+          </tr>
+
+          <!-- Tomorrow -->
+          <tr>
+            <td style="padding:16px 32px;">
+              <p style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;">Missões de amanhã</p>
+              {{TOMORROW_ROWS}}
+            </td>
+          </tr>
+
+          {{DEBT_BLOCK}}
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 32px;border-top:1px solid rgba(56,189,248,0.15);text-align:center;">
+              <p style="color:#64748b;font-size:12px;margin:0;">Continue subindo. O Sistema observa.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

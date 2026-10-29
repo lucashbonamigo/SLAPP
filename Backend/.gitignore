@@ -1,0 +1,19 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## Secrets e evidências locais
+system_proofs/
+*.env
+.env
+
+## OS
+Thumbs.db
+.DS_Store
