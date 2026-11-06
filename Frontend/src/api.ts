@@ -10,6 +10,7 @@ import type {
   MetricsResponse,
   Reflection,
   ReflectionInput,
+  Briefing,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -120,6 +121,12 @@ export async function saveReflection(input: ReflectionInput): Promise<Reflection
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+/** Briefing de hoje. Retorna null quando ainda não foi gerado (204). */
+export async function getTodayBriefing(): Promise<Briefing | null> {
+  const b = await request<Briefing | undefined>("/api/v1/briefings/today");
+  return b ?? null;
 }
 
 export async function getTodayQuests(): Promise<Quest[]> {

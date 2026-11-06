@@ -145,3 +145,11 @@ export interface ReflectionInput {
   autopilotText: string;
   idealText?: string;
 }
+
+// --- Briefing de notícias (Fase 3) ---
+
+export interface Briefing {
+  briefingDate: string;
+  summaryMd: string;
+  sourceCount: number;
+}

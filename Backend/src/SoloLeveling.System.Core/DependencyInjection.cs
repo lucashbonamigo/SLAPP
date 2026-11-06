@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<WorkerOptions>(configuration.GetSection(WorkerOptions.SectionName));
+        services.Configure<NewsOptions>(configuration.GetSection(NewsOptions.SectionName));
 
         services.AddScoped<IProofStorage, DiskProofStorage>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
@@ -34,6 +35,18 @@ public static class DependencyInjection
             // Evita travar indefinidamente se o modelo estiver congestionado.
             client.Timeout = TimeSpan.FromSeconds(90);
         });
+
+        // Briefing de notícias: leitor de RSS e gerador do resumo via Gemini.
+        services.AddHttpClient<INewsFetcher, RssNewsFetcher>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.Add("User-Agent", "SoloLevelingSystem/1.0 (+briefing)");
+        });
+        services.AddHttpClient<IBriefingGenerator, GeminiBriefingGenerator>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(90);
+        });
+        services.AddScoped<DailyBriefingService>();
 
         return services;
     }

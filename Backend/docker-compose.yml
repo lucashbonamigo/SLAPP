@@ -43,6 +43,9 @@ services:
       Smtp__FromAddress: ${SMTP_FROM}
       Smtp__FromName: "O Sistema"
       Storage__ProofsPath: /var/www/system_proofs
+      News__Enabled: "true"
+      News__RunAt: "05:00:00"
+      News__MaxHeadlines: "30"
     volumes:
       - proofs:/var/www/system_proofs
 

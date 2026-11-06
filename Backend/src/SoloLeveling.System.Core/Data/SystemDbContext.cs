@@ -22,6 +22,7 @@ public class SystemDbContext : DbContext
     public DbSet<PersonalityTrait> PersonalityTraits => Set<PersonalityTrait>();
     public DbSet<PersonalityTraitHistory> PersonalityTraitHistory => Set<PersonalityTraitHistory>();
     public DbSet<DailyReflection> DailyReflections => Set<DailyReflection>();
+    public DbSet<DailyBriefing> DailyBriefings => Set<DailyBriefing>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -266,6 +267,20 @@ public class SystemDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DailyBriefing>(entity =>
+        {
+            entity.ToTable("daily_briefings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.BriefingDate).HasColumnName("briefing_date").HasColumnType("date");
+            entity.Property(e => e.SummaryMd).HasColumnName("summary_md").HasColumnType("text").IsRequired();
+            entity.Property(e => e.SourceCount).HasColumnName("source_count");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
+
+            entity.HasIndex(e => e.BriefingDate).IsUnique();
         });
     }
 }
