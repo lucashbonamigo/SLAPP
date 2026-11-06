@@ -21,6 +21,7 @@ public class SystemDbContext : DbContext
     public DbSet<QuestMetric> QuestMetrics => Set<QuestMetric>();
     public DbSet<PersonalityTrait> PersonalityTraits => Set<PersonalityTrait>();
     public DbSet<PersonalityTraitHistory> PersonalityTraitHistory => Set<PersonalityTraitHistory>();
+    public DbSet<DailyReflection> DailyReflections => Set<DailyReflection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -239,6 +240,27 @@ public class SystemDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
 
             entity.HasIndex(e => new { e.UserId, e.TraitCode, e.RecordedAt }).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DailyReflection>(entity =>
+        {
+            entity.ToTable("daily_reflections");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.ReflectionDate).HasColumnName("reflection_date").HasColumnType("date");
+            entity.Property(e => e.AutopilotText).HasColumnName("autopilot_text").HasColumnType("text").IsRequired();
+            entity.Property(e => e.IdealText).HasColumnName("ideal_text").HasColumnType("text");
+            entity.Property(e => e.MentorFeedback).HasColumnName("mentor_feedback").HasColumnType("text");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
+
+            entity.HasIndex(e => new { e.UserId, e.ReflectionDate }).IsUnique();
 
             entity.HasOne(e => e.User)
                 .WithMany()

@@ -17,6 +17,7 @@ import PlayerCard from "./PlayerCard";
 import QuestCard from "./QuestCard";
 import PersonalityRadar from "./PersonalityRadar";
 import MetricChart from "./MetricChart";
+import ReflectionPanel from "./ReflectionPanel";
 import SystemLogo from "./SystemLogo";
 import { RefreshIcon, TargetIcon, SkullIcon, LogoutIcon } from "./icons";
 
@@ -161,6 +162,11 @@ export default function Dashboard({ onLogout, onManagePunishments, onManageGoals
 
             {tab === "evolution" ? (
               <div className="evolution">
+                <div className="evolution-block">
+                  <h3 className="evolution-title">Reflexão Noturna</h3>
+                  <ReflectionPanel onSaved={() => void load()} />
+                </div>
+
                 <div className="evolution-block">
                   <h3 className="evolution-title">Personalidade (Big Five)</h3>
                   {hasPersonality ? (

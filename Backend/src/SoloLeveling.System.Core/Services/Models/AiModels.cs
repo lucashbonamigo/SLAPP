@@ -67,6 +67,33 @@ public record QuestMetricReport(
 /// </summary>
 public record TraitDelta(BigFiveTrait Trait, decimal Delta, string? Reason);
 
+/// <summary>Tendência recente de um traço (soma dos deltas na janela), para o mentor.</summary>
+public record TraitTrend(BigFiveTrait Trait, decimal Current, decimal RecentDelta);
+
+/// <summary>
+/// Contexto estratégico injetado no prompt para a IA atuar como mentor de elite:
+/// desempenho recente e o traço mais frágil a corrigir.
+/// </summary>
+public record MentorContext(
+    double SuccessRate7d,
+    int Completed7d,
+    int Failed7d,
+    IReadOnlyList<TraitTrend> TraitTrends,
+    BigFiveTrait? WeakestTrait);
+
+/// <summary>Reflexão noturna do jogador enviada à IA para reestruturação cognitiva.</summary>
+public record ReflectionInput(string AutopilotText, string? IdealText);
+
+/// <summary>
+/// Micro-desafio situacional de personalidade gerado pela IA, focado em moldar
+/// o traço mais frágil. Materializado como uma Quest BONUS avulsa.
+/// </summary>
+public record MicroChallenge(
+    string Title,
+    string Description,
+    BigFiveTrait TargetTrait,
+    int EstimatedMinutes);
+
 /// <summary>Resultado completo da avaliação diária da IA.</summary>
 public record EvaluationResult(
     IReadOnlyList<QuestVerdict> Verdicts,
@@ -77,4 +104,6 @@ public record EvaluationResult(
     int TotalXpDelta,
     int FailuresToCharge,
     string VerdictSummary,
-    bool IsPunishment);
+    bool IsPunishment,
+    string? MentorFeedback,
+    MicroChallenge? MicroChallenge);

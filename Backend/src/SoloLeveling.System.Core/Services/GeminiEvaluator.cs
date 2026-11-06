@@ -46,9 +46,11 @@ public class GeminiEvaluator : IGeminiEvaluator
         IReadOnlyList<QuestSummary> quests,
         IReadOnlyList<ProofImage> proofs,
         IReadOnlyList<TraitSummary> traits,
+        MentorContext mentor,
+        ReflectionInput? reflection,
         CancellationToken ct = default)
     {
-        var prompt = BuildEvaluationPrompt(player, goals, quests, traits);
+        var prompt = BuildEvaluationPrompt(player, goals, quests, traits, mentor, reflection);
 
         var parts = new List<object> { new { text = prompt } };
         foreach (var proof in proofs)
@@ -72,9 +74,11 @@ public class GeminiEvaluator : IGeminiEvaluator
         IReadOnlyList<GoalSummary> goals,
         IReadOnlyList<QuestSummary> quests,
         IReadOnlyList<TraitSummary> traits,
+        MentorContext mentor,
+        ReflectionInput? reflection,
         CancellationToken ct = default)
     {
-        var prompt = BuildPunishmentPrompt(player, goals, quests, traits);
+        var prompt = BuildPunishmentPrompt(player, goals, quests, traits, mentor, reflection);
         var parts = new List<object> { new { text = prompt } };
 
         var raw = await CallGeminiAsync(parts, ct);
@@ -140,7 +144,9 @@ public class GeminiEvaluator : IGeminiEvaluator
                 0,
                 0,
                 "O Sistema não conseguiu emitir um veredito confiável.",
-                isPunishment);
+                isPunishment,
+                null,
+                null);
         }
 
         var verdicts = (dto.Verdicts ?? new List<VerdictDto>())
@@ -168,6 +174,19 @@ public class GeminiEvaluator : IGeminiEvaluator
 
         var totalDelta = verdicts.Sum(v => v.XpDelta);
 
+        MicroChallenge? micro = null;
+        var mc = dto.MicroChallenge;
+        if (mc is not null && !string.IsNullOrWhiteSpace(mc.Title) && !string.IsNullOrWhiteSpace(mc.Description))
+        {
+            var targetTrait = Enum.TryParse<BigFiveTrait>(mc.TargetTrait, true, out var tt)
+                ? tt
+                : BigFiveTrait.CONSCIENTIOUSNESS;
+            var minutes = mc.EstimatedMinutes is > 0 and <= 60 ? mc.EstimatedMinutes.Value : 15;
+            micro = new MicroChallenge(mc.Title!.Trim(), mc.Description!.Trim(), targetTrait, minutes);
+        }
+
+        var mentorFeedback = string.IsNullOrWhiteSpace(dto.MentorFeedback) ? null : dto.MentorFeedback!.Trim();
+
         return new EvaluationResult(
             verdicts,
             tomorrow,
@@ -177,7 +196,9 @@ public class GeminiEvaluator : IGeminiEvaluator
             totalDelta,
             dto.FailuresToCharge ?? 0,
             dto.VerdictSummary ?? string.Empty,
-            isPunishment);
+            isPunishment,
+            mentorFeedback,
+            micro);
     }
 
     private GeneratedQuest MapGeneratedQuest(GeneratedQuestDto g)
@@ -213,19 +234,24 @@ public class GeminiEvaluator : IGeminiEvaluator
         User player,
         IReadOnlyList<GoalSummary> goals,
         IReadOnlyList<QuestSummary> quests,
-        IReadOnlyList<TraitSummary> traits)
+        IReadOnlyList<TraitSummary> traits,
+        MentorContext mentor,
+        ReflectionInput? reflection)
     {
         var sb = new StringBuilder();
         AppendPersona(sb);
         sb.AppendLine("TAREFA: avalie as EVIDÊNCIAS (imagens) de cada missão de hoje e gere as missões de amanhã.");
         sb.AppendLine();
         AppendPlayer(sb, player);
+        AppendMentorContext(sb, mentor);
         AppendPersonality(sb, traits);
+        AppendReflection(sb, reflection);
         AppendGoals(sb, goals);
         AppendTodayQuests(sb, quests);
         AppendEvaluationRules(sb);
         AppendMetricRules(sb);
         AppendPersonalityRules(sb);
+        AppendMentorRules(sb);
         AppendGenerationRules(sb);
         AppendJsonContract(sb);
         return sb.ToString();
@@ -235,7 +261,9 @@ public class GeminiEvaluator : IGeminiEvaluator
         User player,
         IReadOnlyList<GoalSummary> goals,
         IReadOnlyList<QuestSummary> quests,
-        IReadOnlyList<TraitSummary> traits)
+        IReadOnlyList<TraitSummary> traits,
+        MentorContext mentor,
+        ReflectionInput? reflection)
     {
         var missing = quests.Where(q => !q.HasProof).ToList();
         var sb = new StringBuilder();
@@ -245,7 +273,9 @@ public class GeminiEvaluator : IGeminiEvaluator
         sb.AppendLine("NÃO gere punições: a punição é aplicada pelo próprio Sistema, fora da sua resposta. NUNCA use kind=PENALTY.");
         sb.AppendLine();
         AppendPlayer(sb, player);
+        AppendMentorContext(sb, mentor);
         AppendPersonality(sb, traits);
+        AppendReflection(sb, reflection);
         AppendGoals(sb, goals);
 
         sb.AppendLine("MISSÕES NÃO CUMPRIDAS (reprove todas, xpDelta negativo):");
@@ -256,6 +286,7 @@ public class GeminiEvaluator : IGeminiEvaluator
         sb.AppendLine();
 
         AppendPersonalityRules(sb);
+        AppendMentorRules(sb);
         AppendGenerationRules(sb);
         AppendJsonContract(sb);
         return sb.ToString();
@@ -263,8 +294,60 @@ public class GeminiEvaluator : IGeminiEvaluator
 
     private static void AppendPersona(StringBuilder sb)
     {
-        sb.AppendLine("Você é 'O Sistema' de Solo Leveling: frio, analítico, implacável. Nunca aceita desculpas.");
-        sb.AppendLine("Seu papel é substituir a força de vontade por metas objetivas, mensuráveis e verificáveis.");
+        sb.AppendLine("Você é 'O Sistema' de Solo Leveling, agora operando como MENTOR DE ALTA PERFORMANCE.");
+        sb.AppendLine("Tom: frio, analítico e implacável com desculpas, mas ESTRATÉGICO — pensa em marcos de longo prazo");
+        sb.AppendLine("(5 anos: carreira internacional, atleta de resistência), não só na tarefa de hoje.");
+        sb.AppendLine("Seu objetivo é garantir que o Jogador melhore 1% ao dia, moldando sua personalidade com método,");
+        sb.AppendLine("substituindo força de vontade por metas objetivas, mensuráveis e verificáveis.");
+        sb.AppendLine();
+    }
+
+    private static void AppendMentorContext(StringBuilder sb, MentorContext mentor)
+    {
+        sb.AppendLine("DESEMPENHO RECENTE (use para calibrar o feedback e a dificuldade):");
+        sb.AppendLine($"- Taxa de sucesso (7 dias): {mentor.SuccessRate7d:0}% ({mentor.Completed7d} cumpridas, {mentor.Failed7d} falhas).");
+        if (mentor.TraitTrends.Count > 0)
+        {
+            sb.AppendLine("- Tendência dos traços na semana (delta acumulado):");
+            foreach (var t in mentor.TraitTrends)
+            {
+                sb.AppendLine($"    {t.Trait}: atual {t.Current:0.0}, variação {t.RecentDelta:+0.0;-0.0;0}");
+            }
+        }
+        if (mentor.WeakestTrait is not null)
+        {
+            sb.AppendLine($"- FRAQUEZA DA SEMANA a corrigir: {mentor.WeakestTrait}. O micro-desafio de amanhã deve atacá-la.");
+        }
+        sb.AppendLine();
+    }
+
+    private static void AppendReflection(StringBuilder sb, ReflectionInput? reflection)
+    {
+        if (reflection is null || string.IsNullOrWhiteSpace(reflection.AutopilotText))
+        {
+            sb.AppendLine("REFLEXÃO NOTURNA: (o Jogador não registrou reflexão hoje). Cobre esse hábito no feedback.");
+            sb.AppendLine();
+            return;
+        }
+
+        sb.AppendLine("REFLEXÃO NOTURNA DO JOGADOR (o Diário de Piloto Automático):");
+        sb.AppendLine($"- Como reagiu no piloto automático: {reflection.AutopilotText}");
+        if (!string.IsNullOrWhiteSpace(reflection.IdealText))
+        {
+            sb.AppendLine($"- Como o 'Eu Nível 100' teria reagido: {reflection.IdealText}");
+        }
+        sb.AppendLine();
+    }
+
+    private static void AppendMentorRules(StringBuilder sb)
+    {
+        sb.AppendLine("PAPEL DE MENTOR (campos mentorFeedback e microChallenge):");
+        sb.AppendLine("- 'mentorFeedback': faça REESTRUTURAÇÃO COGNITIVA sobre a reflexão noturna. Nomeie o padrão de piloto");
+        sb.AppendLine("  automático, contraste com a resposta do 'Eu Nível 100' e prescreva um gatilho concreto para amanhã.");
+        sb.AppendLine("  Seja duro, porém construtivo. 2-4 frases. Se não houve reflexão, exija o hábito.");
+        sb.AppendLine("- 'microChallenge': UM micro-desafio situacional de personalidade para amanhã, curto (<= 15 min), que force");
+        sb.AppendLine("  o Jogador a agir como a pessoa que quer se tornar, atacando a FRAQUEZA DA SEMANA (targetTrait).");
+        sb.AppendLine("  Ex (NEUROTICISM): ao surgir o 1º bug estressante, registrar o problema com curiosidade clínica em vez de reclamar.");
         sb.AppendLine();
     }
 
@@ -391,6 +474,13 @@ public class GeminiEvaluator : IGeminiEvaluator
         {
           "verdictSummary": "veredito curto e frio do Sistema",
           "failuresToCharge": 0,
+          "mentorFeedback": "reestruturação cognitiva sobre a reflexão noturna",
+          "microChallenge": {
+            "title": "título curto",
+            "description": "ação situacional concreta para amanhã",
+            "targetTrait": "OPENNESS|CONSCIENTIOUSNESS|EXTRAVERSION|AGREEABLENESS|NEUROTICISM",
+            "estimatedMinutes": 10
+          },
           "verdicts": [
             { "questId": 1, "approved": true, "xpDelta": 15, "comment": "motivo objetivo" }
           ],
@@ -433,7 +523,17 @@ public class GeminiEvaluator : IGeminiEvaluator
         [JsonPropertyName("goalProgress")] public List<GoalProgressDto>? GoalProgress { get; set; }
         [JsonPropertyName("metrics")] public List<MetricDto>? Metrics { get; set; }
         [JsonPropertyName("traitDeltas")] public List<TraitDeltaDto>? TraitDeltas { get; set; }
+        [JsonPropertyName("mentorFeedback")] public string? MentorFeedback { get; set; }
+        [JsonPropertyName("microChallenge")] public MicroChallengeDto? MicroChallenge { get; set; }
         [JsonPropertyName("tomorrowQuests")] public List<GeneratedQuestDto>? TomorrowQuests { get; set; }
+    }
+
+    private sealed class MicroChallengeDto
+    {
+        [JsonPropertyName("title")] public string? Title { get; set; }
+        [JsonPropertyName("description")] public string? Description { get; set; }
+        [JsonPropertyName("targetTrait")] public string? TargetTrait { get; set; }
+        [JsonPropertyName("estimatedMinutes")] public int? EstimatedMinutes { get; set; }
     }
 
     private sealed class MetricDto

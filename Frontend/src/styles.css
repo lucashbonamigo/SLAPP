@@ -845,3 +845,83 @@ body {
   stroke: var(--bg);
   stroke-width: 1.5;
 }
+
+/* ===================================================================
+   Reflexão noturna + feedback do mentor (Fase 2)
+   =================================================================== */
+
+.reflection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.reflection-intro {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.reflection-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.reflection-field span {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.reflection-field textarea {
+  width: 100%;
+  resize: vertical;
+  background: var(--bg-panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.reflection-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.reflection-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.reflection-saved {
+  font-size: 0.75rem;
+  color: var(--success);
+}
+
+.mentor-feedback {
+  border: 1px solid var(--warning);
+  background: rgba(251, 191, 36, 0.08);
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+}
+
+.mentor-feedback-label {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warning);
+  margin-bottom: 0.35rem;
+}
+
+.mentor-feedback p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+}

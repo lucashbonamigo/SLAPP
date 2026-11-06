@@ -87,6 +87,17 @@ public class DailyEvaluationService
             .Select(t => new TraitSummary(t.TraitCode, t.Value))
             .ToList();
 
+        // Contexto de mentor: desempenho dos últimos 7 dias e tendência dos traços.
+        var mentor = await BuildMentorContextAsync(userId, traits, today, ct);
+
+        // Reflexão noturna de hoje (o Diário de Piloto Automático), se registrada.
+        var reflectionEntity = await _db.DailyReflections
+            .FirstOrDefaultAsync(r => r.UserId == userId && r.ReflectionDate == today, ct);
+
+        var reflectionInput = reflectionEntity is null
+            ? null
+            : new ReflectionInput(reflectionEntity.AutopilotText, reflectionEntity.IdealText);
+
         // 1. Auditoria: quantas quests do dia estão sem evidência.
         var missing = quests.Count(q => q.Proofs.Count == 0);
         _logger.LogInformation("Auditoria: {Total} quests, {Missing} sem evidência.", quests.Count, missing);
@@ -104,15 +115,15 @@ public class DailyEvaluationService
             if (missing == 0)
             {
                 var proofImages = await LoadProofImagesAsync(quests, ct);
-                result = await _evaluator.EvaluateAsync(player, goalSummaries, summaries, proofImages, traitSummaries, ct);
+                result = await _evaluator.EvaluateAsync(player, goalSummaries, summaries, proofImages, traitSummaries, mentor, reflectionInput, ct);
             }
             else
             {
-                result = await _evaluator.PunishAsync(player, goalSummaries, summaries, traitSummaries, ct);
+                result = await _evaluator.PunishAsync(player, goalSummaries, summaries, traitSummaries, mentor, reflectionInput, ct);
             }
 
             // 3. Atualização do banco (punição é determinística, não vem da IA).
-            await ApplyResultAsync(player, quests, goals, traits, result, today, tomorrow, ct);
+            await ApplyResultAsync(player, quests, goals, traits, reflectionEntity, result, today, tomorrow, ct);
         }
         catch (OperationCanceledException)
         {
@@ -159,6 +170,7 @@ public class DailyEvaluationService
         List<Quest> quests,
         List<Goal> goals,
         List<PersonalityTrait> traits,
+        DailyReflection? reflection,
         EvaluationResult result,
         DateOnly today,
         DateOnly tomorrow,
@@ -238,6 +250,37 @@ public class DailyEvaluationService
         // snapshot diário para o radar de evolução.
         ApplyTraitDeltas(player.Id, traits, result.TraitDeltas, today);
 
+        // Mentor: grava a reestruturação cognitiva na reflexão de hoje (se houver).
+        if (reflection is not null && !string.IsNullOrWhiteSpace(result.MentorFeedback))
+        {
+            reflection.MentorFeedback = result.MentorFeedback;
+            reflection.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // Micro-desafio de personalidade: materializa como uma Quest BONUS avulsa
+        // (aparece no dashboard, aceita evidência e passa pela avaliação de amanhã).
+        if (result.MicroChallenge is not null)
+        {
+            var mc = result.MicroChallenge;
+            _db.Quests.Add(new Quest
+            {
+                UserId = player.Id,
+                GoalId = null,
+                Title = $"[MENTOR] {mc.Title}",
+                Description = mc.Description,
+                MetricTarget = $"Micro-desafio de {mc.TargetTrait} (até {mc.EstimatedMinutes} min)",
+                ProofType = ProofType.GENERIC,
+                EstimatedMinutes = Math.Clamp(mc.EstimatedMinutes, 1, _rules.MaxTaskMinutes),
+                AttributeType = MapTraitToAttribute(mc.TargetTrait),
+                XpReward = 20,
+                Status = QuestStatus.PENDING,
+                Kind = QuestKind.BONUS,
+                IsPenalty = false,
+                TargetDate = tomorrow,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
         // Insere as missões normais de amanhã geradas pela IA.
         // A IA NÃO decide punição: qualquer PENALTY vinda dela é ignorada aqui.
         foreach (var generated in result.TomorrowQuests.Where(g => g.Kind != QuestKind.PENALTY))
@@ -312,6 +355,76 @@ public class DailyEvaluationService
                 d.Trait, appliedDelta, newValue, d.Reason ?? "(sem motivo)");
         }
     }
+
+    /// <summary>
+    /// Monta o contexto estratégico do mentor: taxa de sucesso dos últimos 7 dias
+    /// (missões já julgadas) e a tendência de cada traço (soma dos deltas da semana).
+    /// A fraqueza da semana é o traço com pior situação: para NEUROTICISM, valor
+    /// alto é ruim; para os demais, valor baixo é ruim.
+    /// </summary>
+    private async Task<MentorContext> BuildMentorContextAsync(
+        int userId,
+        List<PersonalityTrait> traits,
+        DateOnly today,
+        CancellationToken ct)
+    {
+        var weekAgo = today.AddDays(-7);
+
+        var recent = await _db.Quests
+            .Where(q => q.UserId == userId
+                && q.TargetDate >= weekAgo && q.TargetDate < today
+                && (q.Status == QuestStatus.COMPLETED || q.Status == QuestStatus.FAILED))
+            .Select(q => q.Status)
+            .ToListAsync(ct);
+
+        var completed = recent.Count(s => s == QuestStatus.COMPLETED);
+        var failed = recent.Count(s => s == QuestStatus.FAILED);
+        var total = completed + failed;
+        var successRate = total > 0 ? (double)completed / total * 100.0 : 0.0;
+
+        // Tendência: soma dos deltas por traço na janela de 7 dias.
+        var deltas = await _db.PersonalityTraitHistory
+            .Where(h => h.UserId == userId && h.RecordedAt >= weekAgo)
+            .GroupBy(h => h.TraitCode)
+            .Select(g => new { Trait = g.Key, Sum = g.Sum(x => x.Delta) })
+            .ToListAsync(ct);
+
+        var deltaByTrait = deltas.ToDictionary(d => d.Trait, d => d.Sum);
+        var valueByTrait = traits.ToDictionary(t => t.TraitCode, t => t.Value);
+
+        var trends = valueByTrait
+            .Select(kv => new TraitTrend(
+                kv.Key,
+                kv.Value,
+                deltaByTrait.TryGetValue(kv.Key, out var d) ? d : 0m))
+            .ToList();
+
+        // Fraqueza: maior "distância do ideal". Ideal de NEUROTICISM é baixo.
+        BigFiveTrait? weakest = null;
+        decimal worstGap = decimal.MinValue;
+        foreach (var t in trends)
+        {
+            var gap = t.Trait == BigFiveTrait.NEUROTICISM ? t.Current : 100m - t.Current;
+            if (gap > worstGap)
+            {
+                worstGap = gap;
+                weakest = t.Trait;
+            }
+        }
+
+        return new MentorContext(successRate, completed, failed, trends, weakest);
+    }
+
+    /// <summary>Mapeia um traço Big Five para o atributo de ficha mais próximo.</summary>
+    private static AttributeType MapTraitToAttribute(BigFiveTrait trait) => trait switch
+    {
+        BigFiveTrait.CONSCIENTIOUSNESS => AttributeType.WIS,
+        BigFiveTrait.NEUROTICISM => AttributeType.VIT,
+        BigFiveTrait.OPENNESS => AttributeType.INT,
+        BigFiveTrait.EXTRAVERSION => AttributeType.WIS,
+        BigFiveTrait.AGREEABLENESS => AttributeType.WIS,
+        _ => AttributeType.VIT
+    };
 
     /// <summary>
     /// Sorteia uma punição ativa do catálogo (ponderada por Weight) e materializa

@@ -130,3 +130,18 @@ export interface MetricSeries {
 export interface MetricsResponse {
   series: MetricSeries[];
 }
+
+// --- Reflexão noturna (Fase 2) ---
+
+export interface Reflection {
+  id: number;
+  reflectionDate: string;
+  autopilotText: string;
+  idealText: string | null;
+  mentorFeedback: string | null;
+}
+
+export interface ReflectionInput {
+  autopilotText: string;
+  idealText?: string;
+}

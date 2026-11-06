@@ -8,6 +8,8 @@ import type {
   GoalInput,
   PersonalityResponse,
   MetricsResponse,
+  Reflection,
+  ReflectionInput,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -104,6 +106,20 @@ export async function getMetrics(
     params.set("goalId", String(goalId));
   }
   return request<MetricsResponse>(`/api/v1/player/metrics?${params.toString()}`);
+}
+
+/** Reflexão de hoje. Retorna null quando ainda não há registro (204). */
+export async function getTodayReflection(): Promise<Reflection | null> {
+  const r = await request<Reflection | undefined>("/api/v1/reflections/today");
+  return r ?? null;
+}
+
+export async function saveReflection(input: ReflectionInput): Promise<Reflection> {
+  return request<Reflection>("/api/v1/reflections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getTodayQuests(): Promise<Quest[]> {

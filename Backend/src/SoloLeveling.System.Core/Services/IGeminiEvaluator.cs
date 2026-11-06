@@ -19,6 +19,8 @@ public interface IGeminiEvaluator
         IReadOnlyList<QuestSummary> quests,
         IReadOnlyList<ProofImage> proofs,
         IReadOnlyList<TraitSummary> traits,
+        MentorContext mentor,
+        ReflectionInput? reflection,
         CancellationToken ct = default);
 
     /// <summary>
@@ -30,5 +32,7 @@ public interface IGeminiEvaluator
         IReadOnlyList<GoalSummary> goals,
         IReadOnlyList<QuestSummary> quests,
         IReadOnlyList<TraitSummary> traits,
+        MentorContext mentor,
+        ReflectionInput? reflection,
         CancellationToken ct = default);
 }
