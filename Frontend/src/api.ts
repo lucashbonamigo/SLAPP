@@ -6,6 +6,8 @@ import type {
   PunishmentInput,
   Goal,
   GoalInput,
+  PersonalityResponse,
+  MetricsResponse,
 } from "./types";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -87,6 +89,21 @@ export async function register(
 
 export async function getPlayerStatus(): Promise<PlayerStatus> {
   return request<PlayerStatus>("/api/v1/player/status");
+}
+
+export async function getPersonality(days = 90): Promise<PersonalityResponse> {
+  return request<PersonalityResponse>(`/api/v1/player/personality?days=${days}`);
+}
+
+export async function getMetrics(
+  goalId?: number,
+  days = 90
+): Promise<MetricsResponse> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (goalId != null) {
+    params.set("goalId", String(goalId));
+  }
+  return request<MetricsResponse>(`/api/v1/player/metrics?${params.toString()}`);
 }
 
 export async function getTodayQuests(): Promise<Quest[]> {

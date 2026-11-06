@@ -87,3 +87,46 @@ export interface Punishment {
 
 /** Payload de criação/edição (sem id). */
 export type PunishmentInput = Omit<Punishment, "id">;
+
+// --- Evolução: traços Big Five e métricas (Fase 1) ---
+
+export type BigFiveTrait =
+  | "OPENNESS"
+  | "CONSCIENTIOUSNESS"
+  | "EXTRAVERSION"
+  | "AGREEABLENESS"
+  | "NEUROTICISM";
+
+export interface Trait {
+  trait: BigFiveTrait;
+  /** 0-100, 50 = neutro. Em NEUROTICISM, menor é melhor. */
+  value: number;
+  updatedAt: string;
+}
+
+export interface TraitHistoryPoint {
+  trait: BigFiveTrait;
+  value: number;
+  delta: number;
+  recordedAt: string;
+}
+
+export interface PersonalityResponse {
+  traits: Trait[];
+  history: TraitHistoryPoint[];
+}
+
+export interface MetricPoint {
+  recordedAt: string;
+  value: number;
+}
+
+export interface MetricSeries {
+  metricName: string;
+  unit: string | null;
+  points: MetricPoint[];
+}
+
+export interface MetricsResponse {
+  series: MetricSeries[];
+}
