@@ -18,6 +18,7 @@ public interface IGeminiEvaluator
         IReadOnlyList<GoalSummary> goals,
         IReadOnlyList<QuestSummary> quests,
         IReadOnlyList<ProofImage> proofs,
+        IReadOnlyList<TraitSummary> traits,
         CancellationToken ct = default);
 
     /// <summary>
@@ -28,5 +29,6 @@ public interface IGeminiEvaluator
         User player,
         IReadOnlyList<GoalSummary> goals,
         IReadOnlyList<QuestSummary> quests,
+        IReadOnlyList<TraitSummary> traits,
         CancellationToken ct = default);
 }

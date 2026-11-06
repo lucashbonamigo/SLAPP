@@ -78,6 +78,15 @@ public class DailyEvaluationService
                 g.TargetMetric, g.ContentBacklog, g.ProgressNotes))
             .ToList();
 
+        // Personalidade atual (Big Five): contexto para a IA ajustar os traços.
+        var traits = await _db.PersonalityTraits
+            .Where(t => t.UserId == userId)
+            .ToListAsync(ct);
+
+        var traitSummaries = traits
+            .Select(t => new TraitSummary(t.TraitCode, t.Value))
+            .ToList();
+
         // 1. Auditoria: quantas quests do dia estão sem evidência.
         var missing = quests.Count(q => q.Proofs.Count == 0);
         _logger.LogInformation("Auditoria: {Total} quests, {Missing} sem evidência.", quests.Count, missing);
@@ -95,15 +104,15 @@ public class DailyEvaluationService
             if (missing == 0)
             {
                 var proofImages = await LoadProofImagesAsync(quests, ct);
-                result = await _evaluator.EvaluateAsync(player, goalSummaries, summaries, proofImages, ct);
+                result = await _evaluator.EvaluateAsync(player, goalSummaries, summaries, proofImages, traitSummaries, ct);
             }
             else
             {
-                result = await _evaluator.PunishAsync(player, goalSummaries, summaries, ct);
+                result = await _evaluator.PunishAsync(player, goalSummaries, summaries, traitSummaries, ct);
             }
 
             // 3. Atualização do banco (punição é determinística, não vem da IA).
-            await ApplyResultAsync(player, quests, goals, result, tomorrow, ct);
+            await ApplyResultAsync(player, quests, goals, traits, result, today, tomorrow, ct);
         }
         catch (OperationCanceledException)
         {
@@ -149,7 +158,9 @@ public class DailyEvaluationService
         User player,
         List<Quest> quests,
         List<Goal> goals,
+        List<PersonalityTrait> traits,
         EvaluationResult result,
+        DateOnly today,
         DateOnly tomorrow,
         CancellationToken ct)
     {
@@ -194,6 +205,39 @@ public class DailyEvaluationService
             }
         }
 
+        // Métricas (série temporal): grava os dados numéricos extraídos das
+        // missões aprovadas. É a matéria-prima dos gráficos de evolução.
+        var questById = quests.ToDictionary(q => q.Id);
+        foreach (var metric in result.Metrics)
+        {
+            if (!questById.TryGetValue(metric.QuestId, out var quest))
+            {
+                continue;
+            }
+
+            // Só registra métrica de missão efetivamente aprovada.
+            if (!verdictByQuest.TryGetValue(quest.Id, out var v) || !v.Approved)
+            {
+                continue;
+            }
+
+            _db.QuestMetrics.Add(new QuestMetric
+            {
+                QuestId = quest.Id,
+                GoalId = quest.GoalId,
+                UserId = player.Id,
+                MetricName = metric.MetricName,
+                MetricValue = metric.Value,
+                Unit = metric.Unit,
+                RecordedAt = today,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        // Personalidade: aplica os deltas de traços (clamp 0-100) e grava o
+        // snapshot diário para o radar de evolução.
+        ApplyTraitDeltas(player.Id, traits, result.TraitDeltas, today);
+
         // Insere as missões normais de amanhã geradas pela IA.
         // A IA NÃO decide punição: qualquer PENALTY vinda dela é ignorada aqui.
         foreach (var generated in result.TomorrowQuests.Where(g => g.Kind != QuestKind.PENALTY))
@@ -211,6 +255,62 @@ public class DailyEvaluationService
         TryGenerateBonus(player, goals, tomorrow);
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Aplica as variações de traços devolvidas pela IA ao estado atual
+    /// (personality_traits, limitado a 0-100) e registra um snapshot do dia em
+    /// personality_trait_history. Cria a linha do traço se ela ainda não existir.
+    /// </summary>
+    private void ApplyTraitDeltas(
+        int userId,
+        List<PersonalityTrait> traits,
+        IReadOnlyList<TraitDelta> deltas,
+        DateOnly today)
+    {
+        if (deltas.Count == 0)
+        {
+            return;
+        }
+
+        var byCode = traits.ToDictionary(t => t.TraitCode);
+
+        foreach (var d in deltas)
+        {
+            if (!byCode.TryGetValue(d.Trait, out var trait))
+            {
+                // Traço ainda não semeado: cria a partir do neutro (50).
+                trait = new PersonalityTrait
+                {
+                    UserId = userId,
+                    TraitCode = d.Trait,
+                    Value = 50m,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _db.PersonalityTraits.Add(trait);
+                byCode[d.Trait] = trait;
+            }
+
+            var newValue = Math.Clamp(trait.Value + d.Delta, 0m, 100m);
+            var appliedDelta = newValue - trait.Value;
+            trait.Value = newValue;
+            trait.UpdatedAt = DateTime.UtcNow;
+
+            _db.PersonalityTraitHistory.Add(new PersonalityTraitHistory
+            {
+                UserId = userId,
+                TraitCode = d.Trait,
+                Value = newValue,
+                Delta = appliedDelta,
+                RecordedAt = today,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            _logger.LogInformation(
+                "Traço {Trait}: {Delta:+0.0;-0.0} -> {Value:0.0}. Motivo: {Reason}",
+                d.Trait, appliedDelta, newValue, d.Reason ?? "(sem motivo)");
+        }
     }
 
     /// <summary>

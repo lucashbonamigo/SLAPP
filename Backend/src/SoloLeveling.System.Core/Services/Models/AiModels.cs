@@ -45,11 +45,35 @@ public record GeneratedQuest(
 /// <summary>Atualização de progresso de um objetivo (a "memória" da IA).</summary>
 public record GoalProgress(int GoalId, string Note);
 
+/// <summary>
+/// Estado atual de um traço Big Five, enviado à IA como contexto para que ela
+/// ajuste a personalidade com base no comportamento do dia.
+/// </summary>
+public record TraitSummary(BigFiveTrait Trait, decimal Value);
+
+/// <summary>
+/// Dado numérico (série temporal) extraído pela IA de uma evidência aprovada.
+/// Ex: metricName="pace_medio", value=5.20, unit="min/km".
+/// </summary>
+public record QuestMetricReport(
+    int QuestId,
+    string MetricName,
+    decimal Value,
+    string? Unit);
+
+/// <summary>
+/// Variação de um traço Big Five decidida pela IA após avaliar o comportamento.
+/// Delta é somado ao valor atual e o resultado é limitado a 0-100.
+/// </summary>
+public record TraitDelta(BigFiveTrait Trait, decimal Delta, string? Reason);
+
 /// <summary>Resultado completo da avaliação diária da IA.</summary>
 public record EvaluationResult(
     IReadOnlyList<QuestVerdict> Verdicts,
     IReadOnlyList<GeneratedQuest> TomorrowQuests,
     IReadOnlyList<GoalProgress> GoalProgress,
+    IReadOnlyList<QuestMetricReport> Metrics,
+    IReadOnlyList<TraitDelta> TraitDeltas,
     int TotalXpDelta,
     int FailuresToCharge,
     string VerdictSummary,

@@ -18,6 +18,9 @@ public class SystemDbContext : DbContext
     public DbSet<Proof> Proofs => Set<Proof>();
     public DbSet<Goal> Goals => Set<Goal>();
     public DbSet<Punishment> Punishments => Set<Punishment>();
+    public DbSet<QuestMetric> QuestMetrics => Set<QuestMetric>();
+    public DbSet<PersonalityTrait> PersonalityTraits => Set<PersonalityTrait>();
+    public DbSet<PersonalityTraitHistory> PersonalityTraitHistory => Set<PersonalityTraitHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -163,6 +166,83 @@ public class SystemDbContext : DbContext
             entity.HasOne(e => e.Quest)
                 .WithMany(q => q.Proofs)
                 .HasForeignKey(e => e.QuestId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<QuestMetric>(entity =>
+        {
+            entity.ToTable("quest_metrics");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.QuestId).HasColumnName("quest_id");
+            entity.Property(e => e.GoalId).HasColumnName("goal_id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.MetricName).HasColumnName("metric_name").HasMaxLength(50).IsRequired();
+            entity.Property(e => e.MetricValue).HasColumnName("metric_value").HasColumnType("decimal(10,2)");
+            entity.Property(e => e.Unit).HasColumnName("unit").HasMaxLength(20);
+            entity.Property(e => e.RecordedAt).HasColumnName("recorded_at").HasColumnType("date");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+
+            entity.HasOne(e => e.Quest)
+                .WithMany()
+                .HasForeignKey(e => e.QuestId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Goal)
+                .WithMany()
+                .HasForeignKey(e => e.GoalId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PersonalityTrait>(entity =>
+        {
+            entity.ToTable("personality_traits");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.TraitCode)
+                .HasColumnName("trait_code")
+                .HasConversion<string>()
+                .HasColumnType("enum('OPENNESS','CONSCIENTIOUSNESS','EXTRAVERSION','AGREEABLENESS','NEUROTICISM')")
+                .IsRequired();
+            entity.Property(e => e.Value).HasColumnName("value").HasColumnType("decimal(5,2)").HasDefaultValue(50m);
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+
+            entity.HasIndex(e => new { e.UserId, e.TraitCode }).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PersonalityTraitHistory>(entity =>
+        {
+            entity.ToTable("personality_trait_history");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.TraitCode)
+                .HasColumnName("trait_code")
+                .HasConversion<string>()
+                .HasColumnType("enum('OPENNESS','CONSCIENTIOUSNESS','EXTRAVERSION','AGREEABLENESS','NEUROTICISM')")
+                .IsRequired();
+            entity.Property(e => e.Value).HasColumnName("value").HasColumnType("decimal(5,2)");
+            entity.Property(e => e.Delta).HasColumnName("delta").HasColumnType("decimal(5,2)");
+            entity.Property(e => e.RecordedAt).HasColumnName("recorded_at").HasColumnType("date");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
+
+            entity.HasIndex(e => new { e.UserId, e.TraitCode, e.RecordedAt }).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
