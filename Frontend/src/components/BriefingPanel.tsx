@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getTodayBriefing, ApiError } from "../api";
 import type { Briefing } from "../types";
 
-/** Converte o markdown simples (bullets "- ") do resumo numa lista. */
+/** Converte o markdown simples (bullets "- ") do resumo numa lista (fallback). */
 function parseBullets(md: string): string[] {
   return md
     .split("\n")
@@ -51,18 +51,43 @@ export default function BriefingPanel() {
     );
   }
 
-  const bullets = parseBullets(briefing.summaryMd);
+  const hasItems = briefing.items.length > 0;
+  const bullets = hasItems ? [] : parseBullets(briefing.summaryMd);
 
   return (
     <div className="briefing">
       <div className="briefing-meta">
         <span>{briefing.briefingDate}</span>
-        <span>{briefing.sourceCount} fontes</span>
+        <span>{briefing.sourceCount} notícias</span>
       </div>
-      {bullets.length > 0 ? (
+
+      {hasItems ? (
+        <ul className="briefing-list">
+          {briefing.items.map((it, i) => (
+            <li key={i}>
+              {it.url ? (
+                <a
+                  className="briefing-link"
+                  href={it.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {it.title}
+                </a>
+              ) : (
+                <span className="briefing-link-static">{it.title}</span>
+              )}
+              <span className="briefing-comment">{it.comment}</span>
+              <span className="briefing-source">{it.source}</span>
+            </li>
+          ))}
+        </ul>
+      ) : bullets.length > 0 ? (
         <ul className="briefing-list">
           {bullets.map((b, i) => (
-            <li key={i}>{b}</li>
+            <li key={i}>
+              <span className="briefing-comment">{b}</span>
+            </li>
           ))}
         </ul>
       ) : (

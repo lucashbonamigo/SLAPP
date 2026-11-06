@@ -1,11 +1,14 @@
 namespace SoloLeveling.System.Core.Services;
 
-/// <summary>Resume/filtra manchetes num briefing curto via IA.</summary>
+/// <summary>Um item curado do briefing: a manchete original + a nota do mentor.</summary>
+public record BriefingItem(string Source, string Title, string? Url, string Comment);
+
+/// <summary>Seleciona e comenta as manchetes mais relevantes via IA.</summary>
 public interface IBriefingGenerator
 {
     /// <summary>
-    /// Recebe manchetes brutas e devolve um resumo em markdown (bullets) do que
-    /// importa em TI, C#/.NET, economia e geopolítica.
+    /// Recebe manchetes brutas e devolve as mais relevantes em TI, C#/.NET,
+    /// economia e geopolítica, cada uma com um comentário curto e o link original preservado.
     /// </summary>
-    Task<string> SummarizeAsync(IReadOnlyList<Headline> headlines, CancellationToken ct = default);
+    Task<IReadOnlyList<BriefingItem>> CurateAsync(IReadOnlyList<Headline> headlines, CancellationToken ct = default);
 }

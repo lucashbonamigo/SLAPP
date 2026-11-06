@@ -71,9 +71,27 @@ public class RssNewsFetcher : INewsFetcher
                 source,
                 item.Title?.Text?.Trim() ?? "(sem título)",
                 Truncate(item.Summary?.Text, 280),
+                ExtractUrl(item),
                 item.PublishDate == default ? null : item.PublishDate))
             .Where(h => !string.IsNullOrWhiteSpace(h.Title))
             .ToList();
+    }
+
+    /// <summary>
+    /// Extrai a URL do item: prioriza um link "alternate" (a página da notícia),
+    /// cai para o primeiro link disponível e, por fim, para o Id quando for uma URI absoluta.
+    /// </summary>
+    private static string? ExtractUrl(SyndicationItem item)
+    {
+        var alternate = item.Links.FirstOrDefault(l =>
+            string.Equals(l.RelationshipType, "alternate", StringComparison.OrdinalIgnoreCase));
+        var link = alternate ?? item.Links.FirstOrDefault();
+        if (link?.Uri is not null)
+        {
+            return link.Uri.ToString();
+        }
+
+        return Uri.TryCreate(item.Id, UriKind.Absolute, out var idUri) ? idUri.ToString() : null;
     }
 
     private static string? Truncate(string? text, int max)

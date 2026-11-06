@@ -148,8 +148,16 @@ export interface ReflectionInput {
 
 // --- Briefing de notícias (Fase 3) ---
 
+export interface BriefingItem {
+  source: string;
+  title: string;
+  url: string | null;
+  comment: string;
+}
+
 export interface Briefing {
   briefingDate: string;
   summaryMd: string;
   sourceCount: number;
+  items: BriefingItem[];
 }

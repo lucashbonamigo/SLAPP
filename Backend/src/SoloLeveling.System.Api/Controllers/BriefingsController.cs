@@ -1,8 +1,10 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SoloLeveling.System.Api.Contracts;
 using SoloLeveling.System.Core.Data;
+using SoloLeveling.System.Core.Domain;
 
 namespace SoloLeveling.System.Api.Controllers;
 
@@ -12,6 +14,11 @@ namespace SoloLeveling.System.Api.Controllers;
 public class BriefingsController : ControllerBase
 {
     private readonly SystemDbContext _db;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public BriefingsController(SystemDbContext db)
     {
@@ -33,10 +40,7 @@ public class BriefingsController : ControllerBase
             return NoContent();
         }
 
-        return Ok(new BriefingResponse(
-            briefing.BriefingDate.ToString("yyyy-MM-dd"),
-            briefing.SummaryMd,
-            briefing.SourceCount));
+        return Ok(ToResponse(briefing));
     }
 
     /// <summary>Lista os briefings recentes (padrão 14 dias), mais recentes primeiro.</summary>
@@ -47,15 +51,35 @@ public class BriefingsController : ControllerBase
         days = Math.Clamp(days, 1, 180);
         var since = DateOnly.FromDateTime(DateTime.Now).AddDays(-days);
 
-        var items = await _db.DailyBriefings.AsNoTracking()
+        var briefings = await _db.DailyBriefings.AsNoTracking()
             .Where(b => b.BriefingDate >= since)
             .OrderByDescending(b => b.BriefingDate)
-            .Select(b => new BriefingResponse(
-                b.BriefingDate.ToString("yyyy-MM-dd"),
-                b.SummaryMd,
-                b.SourceCount))
             .ToListAsync(ct);
 
-        return Ok(items);
+        return Ok(briefings.Select(ToResponse));
+    }
+
+    private static BriefingResponse ToResponse(DailyBriefing b) => new(
+        b.BriefingDate.ToString("yyyy-MM-dd"),
+        b.SummaryMd,
+        b.SourceCount,
+        ParseItems(b.ItemsJson));
+
+    private static IReadOnlyList<BriefingItemDto> ParseItems(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return Array.Empty<BriefingItemDto>();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<BriefingItemDto>>(json, JsonOpts)
+                ?? new List<BriefingItemDto>();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<BriefingItemDto>();
+        }
     }
 }

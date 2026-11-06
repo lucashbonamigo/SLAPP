@@ -954,6 +954,9 @@ body {
 
 .briefing-list li {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
   padding: 0.6rem 0.7rem 0.6rem 1.5rem;
   background: var(--bg-panel-2);
   border: 1px solid var(--border);
@@ -967,7 +970,32 @@ body {
   content: "▹";
   position: absolute;
   left: 0.6rem;
+  top: 0.6rem;
   color: var(--accent);
+}
+
+.briefing-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.briefing-link:hover {
+  text-decoration: underline;
+}
+
+.briefing-link-static {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.briefing-comment {
+  color: var(--text);
+}
+
+.briefing-source {
+  font-size: 0.72rem;
+  color: var(--text-dim);
 }
 
 .briefing-raw {

@@ -276,6 +276,7 @@ public class SystemDbContext : DbContext
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.BriefingDate).HasColumnName("briefing_date").HasColumnType("date");
             entity.Property(e => e.SummaryMd).HasColumnName("summary_md").HasColumnType("text").IsRequired();
+            entity.Property(e => e.ItemsJson).HasColumnName("items_json").HasColumnType("text");
             entity.Property(e => e.SourceCount).HasColumnName("source_count");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp");

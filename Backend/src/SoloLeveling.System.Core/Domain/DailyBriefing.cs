@@ -10,8 +10,11 @@ public class DailyBriefing
 
     public DateOnly BriefingDate { get; set; }
 
-    /// <summary>Resumo em markdown/bullets gerado pela IA.</summary>
+    /// <summary>Resumo em markdown/bullets gerado pela IA (fallback/compatibilidade).</summary>
     public string SummaryMd { get; set; } = string.Empty;
+
+    /// <summary>Itens curados em JSON: [{source,title,url,comment}]. Fonte dos links.</summary>
+    public string? ItemsJson { get; set; }
 
     /// <summary>Quantas manchetes alimentaram o resumo.</summary>
     public int SourceCount { get; set; }

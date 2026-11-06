@@ -1,7 +1,7 @@
 namespace SoloLeveling.System.Core.Services;
 
 /// <summary>Uma manchete lida de um feed RSS/Atom.</summary>
-public record Headline(string Source, string Title, string? Summary, DateTimeOffset? PublishedAt);
+public record Headline(string Source, string Title, string? Summary, string? Url, DateTimeOffset? PublishedAt);
 
 /// <summary>Busca manchetes recentes dos feeds configurados.</summary>
 public interface INewsFetcher
